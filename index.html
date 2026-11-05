@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>じゃんけん心理戦略アナライザー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+  .hand-btn { transition: all 0.15s; }
+  .hand-btn:hover { transform: scale(1.1); }
+  .hand-btn:active { transform: scale(0.95); }
+  @keyframes shake { 0%,100%{transform:translateY(0)} 25%{transform:translateY(-8px)} 75%{transform:translateY(-4px)} }
+  .shake { animation: shake 0.3s ease 3; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  .bar { transition: width 0.6s ease; }
+  canvas { display: block; }
+</style>
+</head>
+<body class="bg-gradient-to-br from-sky-900 via-blue-900 to-indigo-900 min-h-screen p-4">
+
+<div class="max-w-2xl mx-auto">
+  <header class="text-center py-5">
+    <h1 class="text-3xl font-bold text-white">✊ じゃんけん 心理戦略アナライザー</h1>
+    <p class="text-sky-300 mt-1">あなたの手のパターンをリアルタイム分析</p>
+  </header>
+
+  <!-- AI Mode -->
+  <div class="bg-white/10 rounded-2xl p-4 mb-4 flex flex-wrap gap-2 items-center">
+    <span class="text-white text-sm font-semibold mr-2">🤖 AI戦略:</span>
+    <button onclick="setMode('random')" id="mode-random" class="mode-btn px-3 py-1.5 bg-white text-blue-900 rounded-full text-xs font-bold transition">🎲 ランダム</button>
+    <button onclick="setMode('v1')" id="mode-v1" class="mode-btn px-3 py-1.5 bg-white/20 text-white rounded-full text-xs font-bold hover:bg-white/30 transition">🧠 心理AIv1</button>
+    <button onclick="setMode('v2')" id="mode-v2" class="mode-btn px-3 py-1.5 bg-white/20 text-white rounded-full text-xs font-bold hover:bg-white/30 transition">🔮 心理AIv2</button>
+    <span id="mode-desc" class="text-xs text-sky-300 ml-2">完全ランダム（五分五分）</span>
+  </div>
+
+  <!-- Battle Area -->
+  <div class="bg-white/10 rounded-2xl p-6 mb-4 text-center">
+    <!-- Scoreboard -->
+    <div class="grid grid-cols-3 gap-4 mb-5 text-white">
+      <div><p class="text-xs text-sky-300">あなた</p><p id="score-you" class="text-3xl font-bold">0</p></div>
+      <div><p class="text-xs text-sky-300">引き分け</p><p id="score-draw" class="text-3xl font-bold text-gray-400">0</p></div>
+      <div><p class="text-xs text-sky-300">AI</p><p id="score-ai" class="text-3xl font-bold text-red-400">0</p></div>
+    </div>
+
+    <!-- Hands Display -->
+    <div class="flex justify-center items-center gap-8 mb-5 min-h-24">
+      <div class="text-center">
+        <div id="hand-you" class="text-6xl mb-1 shake">❓</div>
+        <p class="text-xs text-sky-300">あなた</p>
+      </div>
+      <p class="text-white text-2xl font-bold">VS</p>
+      <div class="text-center">
+        <div id="hand-ai" class="text-6xl mb-1">❓</div>
+        <p class="text-xs text-red-300">AI</p>
+      </div>
+    </div>
+
+    <!-- Result Message -->
+    <p id="result-msg" class="text-xl font-bold text-white mb-5 min-h-7">─</p>
+
+    <!-- Hand Buttons -->
+    <div class="flex justify-center gap-6">
+      <button onclick="play('rock')" class="hand-btn flex flex-col items-center bg-white/15 hover:bg-white/25 rounded-2xl p-4 text-white transition" aria-label="グーを出す">
+        <span class="text-5xl mb-1">✊</span><span class="text-sm font-semibold">グー</span>
+      </button>
+      <button onclick="play('scissors')" class="hand-btn flex flex-col items-center bg-white/15 hover:bg-white/25 rounded-2xl p-4 text-white transition" aria-label="チョキを出す">
+        <span class="text-5xl mb-1">✌️</span><span class="text-sm font-semibold">チョキ</span>
+      </button>
+      <button onclick="play('paper')" class="hand-btn flex flex-col items-center bg-white/15 hover:bg-white/25 rounded-2xl p-4 text-white transition" aria-label="パーを出す">
+        <span class="text-5xl mb-1">🖐️</span><span class="text-sm font-semibold">パー</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Tabs -->
+  <div class="bg-white/10 rounded-2xl p-5 mb-4 text-white">
+    <div class="flex gap-2 mb-4" role="tablist">
+      <button onclick="showTab('freq')" id="tab-freq" class="tab-btn px-3 py-1.5 bg-white text-blue-900 rounded-lg text-xs font-bold" role="tab" aria-selected="true">出現頻度</button>
+      <button onclick="showTab('matrix')" id="tab-matrix" class="tab-btn px-3 py-1.5 bg-white/20 rounded-lg text-xs font-bold" role="tab" aria-selected="false">遷移マトリクス</button>
+      <button onclick="showTab('bias')" id="tab-bias" class="tab-btn px-3 py-1.5 bg-white/20 rounded-lg text-xs font-bold" role="tab" aria-selected="false">心理バイアス</button>
+      <button onclick="showTab('graph')" id="tab-graph" class="tab-btn px-3 py-1.5 bg-white/20 rounded-lg text-xs font-bold" role="tab" aria-selected="false">勝率推移</button>
+    </div>
+
+    <!-- Freq Tab -->
+    <div id="tab-content-freq" class="fade-in">
+      <p class="text-xs text-sky-300 mb-3">プレイヤーの手の出現頻度</p>
+      <div id="freq-bars" class="space-y-2"></div>
+    </div>
+
+    <!-- Matrix Tab -->
+    <div id="tab-content-matrix" class="hidden fade-in">
+      <p class="text-xs text-sky-300 mb-3">直前の手 → 次の手の遷移確率</p>
+      <div id="matrix-table" class="text-xs overflow-x-auto"></div>
+    </div>
+
+    <!-- Bias Tab -->
+    <div id="tab-content-bias" class="hidden fade-in">
+      <p class="text-xs text-sky-300 mb-3">あなたの心理バイアス分析</p>
+      <div id="bias-content" class="space-y-2 text-sm"></div>
+    </div>
+
+    <!-- Graph Tab -->
+    <div id="tab-content-graph" class="hidden fade-in">
+      <p class="text-xs text-sky-300 mb-3">勝率推移（直近50戦）</p>
+      <canvas id="win-graph" width="460" height="120" aria-label="勝率推移グラフ"></canvas>
+    </div>
+  </div>
+
+  <!-- Diagnosis Panel (every 50 games) -->
+  <div id="diagnosis-panel" class="hidden bg-yellow-500/20 border border-yellow-400/30 rounded-2xl p-5 mb-4 text-white fade-in">
+    <h3 class="font-bold text-yellow-300 mb-2">🔍 50戦分析：あなたの弱点パターン</h3>
+    <div id="diagnosis-content" class="text-sm text-yellow-100 space-y-1"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex gap-3 mb-4">
+    <button onclick="resetGame()" class="flex-1 bg-white/10 hover:bg-white/20 text-white font-semibold py-2.5 rounded-xl transition text-sm">🔄 リセット</button>
+    <button onclick="clearHistory()" class="text-xs text-sky-400 hover:text-white px-4 py-2.5 rounded-xl border border-white/20 transition">履歴削除</button>
+  </div>
+</div>
+
+<script>
+const EMOJI = { rock:'✊', scissors:'✌️', paper:'🖐️' };
+const HANDS = ['rock','scissors','paper'];
+const HAND_JP = { rock:'グー', scissors:'チョキ', paper:'パー' };
+const BEATS = { rock:'scissors', scissors:'paper', paper:'rock' }; // key beats value
+const LOSES_TO = { rock:'paper', scissors:'rock', paper:'scissors' };
+
+let scores = { you: 0, ai: 0, draw: 0 };
+let history = [];
+let freq = { rock:0, scissors:0, paper:0 };
+let matrix = { rock:{rock:0,scissors:0,paper:0}, scissors:{rock:0,scissors:0,paper:0}, paper:{rock:0,scissors:0,paper:0} };
+let afterWin = { rock:0, scissors:0, paper:0, total:0 };
+let afterLoss = { rock:0, scissors:0, paper:0, total:0 };
+let afterDraw = { rock:0, scissors:0, paper:0, total:0 };
+let winHistory = [];
+let currentMode = 'random';
+let currentTab = 'freq';
+
+// Load from localStorage
+function loadData() {
+  const saved = localStorage.getItem('janken-data');
+  if (saved) {
+    const d = JSON.parse(saved);
+    scores = d.scores || scores;
+    history = d.history || history;
+    freq = d.freq || freq;
+    matrix = d.matrix || matrix;
+    afterWin = d.afterWin || afterWin;
+    afterLoss = d.afterLoss || afterLoss;
+    afterDraw = d.afterDraw || afterDraw;
+    winHistory = d.winHistory || winHistory;
+  }
+  updateScoreboard();
+  updateAllStats();
+}
+
+function saveData() {
+  localStorage.setItem('janken-data', JSON.stringify({ scores, history, freq, matrix, afterWin, afterLoss, afterDraw, winHistory }));
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => { b.className = 'mode-btn px-3 py-1.5 bg-white/20 text-white rounded-full text-xs font-bold hover:bg-white/30 transition'; });
+  document.getElementById('mode-' + mode).className = 'mode-btn px-3 py-1.5 bg-white text-blue-900 rounded-full text-xs font-bold transition';
+  const descs = { random:'完全ランダム（五分五分）', v1:'直前の手を記録して次を予測', v2:'3手パターンでマルコフ連鎖予測' };
+  document.getElementById('mode-desc').textContent = descs[mode];
+}
+
+function getAIMove(lastHand) {
+  if (currentMode === 'random') return HANDS[Math.floor(Math.random() * 3)];
+  if (currentMode === 'v1') {
+    if (!lastHand || history.length < 5) return HANDS[Math.floor(Math.random() * 3)];
+    const freqEntry = freq;
+    const max = Math.max(freqEntry.rock, freqEntry.scissors, freqEntry.paper);
+    const likelyHand = Object.keys(freqEntry).find(h => freqEntry[h] === max) || lastHand;
+    return LOSES_TO[likelyHand];
+  }
+  if (currentMode === 'v2') {
+    if (history.length < 6) return HANDS[Math.floor(Math.random() * 3)];
+    if (!lastHand) return HANDS[Math.floor(Math.random() * 3)];
+    const trans = matrix[lastHand];
+    const total = trans.rock + trans.scissors + trans.paper;
+    if (total === 0) return HANDS[Math.floor(Math.random() * 3)];
+    const max = Math.max(trans.rock, trans.scissors, trans.paper);
+    const likelyNext = HANDS.find(h => trans[h] === max) || HANDS[Math.floor(Math.random() * 3)];
+    return LOSES_TO[likelyNext];
+  }
+  return HANDS[Math.floor(Math.random() * 3)];
+}
+
+function play(yourHand) {
+  const lastHand = history.length > 0 ? history[history.length - 1].you : null;
+  const lastResult = history.length > 0 ? history[history.length - 1].result : null;
+  const aiHand = getAIMove(lastHand);
+
+  let result;
+  if (yourHand === aiHand) result = 'draw';
+  else if (BEATS[yourHand] === aiHand) result = 'win';
+  else result = 'lose';
+
+  scores[result === 'win' ? 'you' : result === 'lose' ? 'ai' : 'draw']++;
+  winHistory.push(result === 'win' ? 1 : result === 'lose' ? 0 : 0.5);
+
+  freq[yourHand]++;
+  if (lastHand) matrix[lastHand][yourHand]++;
+
+  if (lastResult === 'win') { afterWin[yourHand]++; afterWin.total++; }
+  else if (lastResult === 'lose') { afterLoss[yourHand]++; afterLoss.total++; }
+  else if (lastResult === 'draw' && history.length > 0) { afterDraw[yourHand]++; afterDraw.total++; }
+
+  history.push({ you: yourHand, ai: aiHand, result });
+
+  // Update display
+  document.getElementById('hand-you').textContent = EMOJI[yourHand];
+  document.getElementById('hand-ai').textContent = EMOJI[aiHand];
+  document.getElementById('hand-you').classList.remove('shake');
+  void document.getElementById('hand-you').offsetWidth;
+  document.getElementById('hand-you').classList.add('shake');
+
+  const msgs = { win:'🎉 あなたの勝ち！', lose:'😈 AIの勝ち...', draw:'🤝 引き分け' };
+  const colors = { win:'text-green-300', lose:'text-red-300', draw:'text-gray-300' };
+  const msgEl = document.getElementById('result-msg');
+  msgEl.textContent = `${msgs[result]}　（${HAND_JP[yourHand]} vs ${HAND_JP[aiHand]}）`;
+  msgEl.className = `text-xl font-bold mb-5 min-h-7 ${colors[result]}`;
+
+  updateScoreboard();
+  updateAllStats();
+
+  if (history.length % 50 === 0) showDiagnosis();
+  saveData();
+}
+
+function updateScoreboard() {
+  document.getElementById('score-you').textContent = scores.you;
+  document.getElementById('score-draw').textContent = scores.draw;
+  document.getElementById('score-ai').textContent = scores.ai;
+}
+
+function updateAllStats() {
+  if (currentTab === 'freq') updateFreqBars();
+  else if (currentTab === 'matrix') updateMatrix();
+  else if (currentTab === 'bias') updateBias();
+  else if (currentTab === 'graph') updateGraph();
+}
+
+function updateFreqBars() {
+  const total = freq.rock + freq.scissors + freq.paper || 1;
+  const el = document.getElementById('freq-bars');
+  el.innerHTML = HANDS.map(h => {
+    const pct = Math.round(freq[h] / total * 100);
+    const colors = { rock:'bg-red-400', scissors:'bg-yellow-400', paper:'bg-blue-400' };
+    return `<div>
+      <div class="flex justify-between text-xs mb-1"><span>${EMOJI[h]} ${HAND_JP[h]}</span><span>${pct}% (${freq[h]}回)</span></div>
+      <div class="w-full bg-white/10 rounded-full h-4">
+        <div class="bar ${colors[h]} h-4 rounded-full" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateMatrix() {
+  const el = document.getElementById('matrix-table');
+  const headers = ['','グー','チョキ','パー'];
+  let html = '<table class="w-full text-center border-collapse">';
+  html += '<tr>' + headers.map((h,i) => `<th class="${i===0?'text-left':''} p-1 text-sky-300">${h}</th>`).join('') + '</tr>';
+  HANDS.forEach(from => {
+    const total = matrix[from].rock + matrix[from].scissors + matrix[from].paper || 1;
+    html += `<tr><td class="text-left p-1 text-sky-200">${EMOJI[from]}後</td>`;
+    HANDS.forEach(to => {
+      const pct = Math.round(matrix[from][to] / total * 100);
+      const heat = pct > 50 ? 'bg-red-500/40' : pct > 30 ? 'bg-yellow-500/20' : 'bg-white/5';
+      html += `<td class="p-1 rounded ${heat}">${pct}%</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function updateBias() {
+  const el = document.getElementById('bias-content');
+  const items = [];
+  const total = history.length;
+
+  if (total < 5) { el.innerHTML = '<p class="text-sky-300 text-xs">5回以上プレイすると分析できます</p>'; return; }
+
+  if (afterWin.total > 0) {
+    const max = Math.max(afterWin.rock, afterWin.scissors, afterWin.paper);
+    const fav = HANDS.find(h => afterWin[h] === max);
+    const pct = Math.round(afterWin[fav] / afterWin.total * 100);
+    items.push(`🏆 <strong>勝った後は${EMOJI[fav]}${HAND_JP[fav]}を出す確率: ${pct}%</strong>（同じ手で連続勝ちしようとする傾向）`);
+  }
+  if (afterLoss.total > 0) {
+    const max = Math.max(afterLoss.rock, afterLoss.scissors, afterLoss.paper);
+    const fav = HANDS.find(h => afterLoss[h] === max);
+    const pct = Math.round(afterLoss[fav] / afterLoss.total * 100);
+    items.push(`😤 <strong>負けた後は${EMOJI[fav]}${HAND_JP[fav]}を出す確率: ${pct}%</strong>（前の手に勝てる手を出そうとする傾向）`);
+  }
+  const freqTotal = freq.rock + freq.scissors + freq.paper || 1;
+  const maxFreq = Math.max(freq.rock, freq.scissors, freq.paper);
+  const favHand = HANDS.find(h => freq[h] === maxFreq);
+  const favPct = Math.round(freq[favHand] / freqTotal * 100);
+  if (favPct > 40) items.push(`🤚 <strong>全体的に${EMOJI[favHand]}${HAND_JP[favHand]}が多い (${favPct}%)</strong>。AIは${EMOJI[LOSES_TO[favHand]]}${HAND_JP[LOSES_TO[favHand]]}で対策できます`);
+
+  const winRate = Math.round(scores.you / (scores.you + scores.ai + scores.draw || 1) * 100);
+  items.push(`📊 <strong>勝率: ${winRate}%</strong>（${scores.you}勝 ${scores.draw}引 ${scores.ai}敗）`);
+
+  el.innerHTML = items.map(i => `<p class="py-1 border-b border-white/10 last:border-0">${i}</p>`).join('');
+}
+
+function updateGraph() {
+  const canvas = document.getElementById('win-graph');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 460, 120);
+
+  const data = winHistory.slice(-50);
+  if (data.length < 2) { ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='12px sans-serif'; ctx.fillText('データが少なすぎます（2回以上プレイ）',10,60); return; }
+
+  // Rolling win rate
+  const windowSize = Math.min(10, data.length);
+  const rates = [];
+  for (let i = windowSize - 1; i < data.length; i++) {
+    const window = data.slice(i - windowSize + 1, i + 1);
+    rates.push(window.filter(v => v === 1).length / windowSize);
+  }
+
+  const w = 460, h = 120, pad = 20;
+  const stepX = (w - pad * 2) / (rates.length - 1 || 1);
+  const toY = r => pad + (1 - r) * (h - pad * 2);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  [0, 0.25, 0.5, 0.75, 1].forEach(r => {
+    ctx.beginPath();
+    ctx.moveTo(pad, toY(r));
+    ctx.lineTo(w - pad, toY(r));
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(Math.round(r * 100) + '%', 2, toY(r) + 4);
+  });
+
+  // 50% line
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad, toY(0.5));
+  ctx.lineTo(w - pad, toY(0.5));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Win rate line
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  rates.forEach((r, i) => {
+    const x = pad + i * stepX;
+    const y = toY(r);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Last point
+  if (rates.length > 0) {
+    const last = rates[rates.length - 1];
+    ctx.beginPath();
+    ctx.arc(pad + (rates.length - 1) * stepX, toY(last), 4, 0, 2 * Math.PI);
+    ctx.fillStyle = last >= 0.5 ? '#4ade80' : '#f87171';
+    ctx.fill();
+  }
+}
+
+function showDiagnosis() {
+  const data = history.slice(-50);
+  const yourHands = data.map(h => h.you);
+  const counts = { rock:0, scissors:0, paper:0 };
+  yourHands.forEach(h => counts[h]++);
+  const weakest = HANDS.sort((a, b) => counts[b] - counts[a])[0];
+  const winRate = data.filter(h => h.result === 'win').length / 50;
+
+  const el = document.getElementById('diagnosis-content');
+  el.innerHTML = `
+    <p>✊ 直近50戦の勝率: <strong>${Math.round(winRate * 100)}%</strong></p>
+    <p>📊 最も多く出した手: ${EMOJI[weakest]}${HAND_JP[weakest]}（${counts[weakest]}回 / 50回）</p>
+    <p>⚡ 弱点: AIは次回 ${EMOJI[LOSES_TO[weakest]]}${HAND_JP[LOSES_TO[weakest]]} を多用してくる可能性があります</p>
+    <p>💡 対策: ${EMOJI[LOSES_TO[LOSES_TO[weakest]]]}${HAND_JP[LOSES_TO[LOSES_TO[weakest]]]} をより多く意識しましょう</p>
+  `;
+  document.getElementById('diagnosis-panel').classList.remove('hidden');
+}
+
+function showTab(tab) {
+  currentTab = tab;
+  ['freq','matrix','bias','graph'].forEach(t => {
+    document.getElementById('tab-content-' + t).classList.toggle('hidden', t !== tab);
+    const btn = document.getElementById('tab-' + t);
+    if (t === tab) { btn.className = 'tab-btn px-3 py-1.5 bg-white text-blue-900 rounded-lg text-xs font-bold'; btn.setAttribute('aria-selected','true'); }
+    else { btn.className = 'tab-btn px-3 py-1.5 bg-white/20 rounded-lg text-xs font-bold'; btn.setAttribute('aria-selected','false'); }
+  });
+  updateAllStats();
+}
+
+function resetGame() {
+  if (!confirm('全データをリセットしますか？')) return;
+  scores = { you:0, ai:0, draw:0 };
+  history = [];
+  freq = { rock:0, scissors:0, paper:0 };
+  matrix = { rock:{rock:0,scissors:0,paper:0}, scissors:{rock:0,scissors:0,paper:0}, paper:{rock:0,scissors:0,paper:0} };
+  afterWin = { rock:0, scissors:0, paper:0, total:0 };
+  afterLoss = { rock:0, scissors:0, paper:0, total:0 };
+  afterDraw = { rock:0, scissors:0, paper:0, total:0 };
+  winHistory = [];
+  document.getElementById('hand-you').textContent = '❓';
+  document.getElementById('hand-ai').textContent = '❓';
+  document.getElementById('result-msg').textContent = '─';
+  document.getElementById('diagnosis-panel').classList.add('hidden');
+  updateScoreboard();
+  updateAllStats();
+  saveData();
+}
+
+function clearHistory() {
+  if (confirm('保存データを削除しますか？')) { localStorage.removeItem('janken-data'); resetGame(); }
+}
+
+loadData();
+</script>
+</body>
+</html>
